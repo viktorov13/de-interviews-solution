@@ -225,3 +225,34 @@ class IntegrationTest(unittest.TestCase):
             distant = build_features(rows.loc[rows["price_id"] == 92000001]).iloc[0]
             self.assertEqual(distant["year"], 2500)
             self.assertEqual(distant["body_group"], "Тент")
+
+    def test_reliability_thresholds_and_freshness(self):
+        with psycopg.connect(autocommit=True) as conn, conn.transaction(force_rollback=True):
+            conn.execute(Path(__file__).with_name("edge_cases.sql").read_text(encoding="utf-8"))
+            conn.execute("""
+                INSERT INTO raw.prices (
+                    id, organization_id, loading_date, loading_city_gcid, unloading_city_gcid,
+                    distance, total_weight, total_volume, body_type, price, price_type
+                )
+                SELECT 93000000 + body * 100 + i, i % carriers, DATE '2026-10-01',
+                    990002, 990001, 100, 10, 20, body, 2000 + i, 3
+                FROM (VALUES (56, 30, 5), (4, 30, 4), (2, 10, 5), (15, 9, 5))
+                    AS cases(body, trips, carriers)
+                CROSS JOIN LATERAL generate_series(1, trips) AS i;
+                INSERT INTO raw.price_dates (price_id, price_date)
+                SELECT id, loading_date FROM raw.prices
+                WHERE id BETWEEN 93000000 AND 93006000;
+            """)
+            load_core(conn, date(2026, 10, 1), date(2026, 10, 2))
+
+            def levels():
+                return dict(conn.execute("""
+                    SELECT body_group_id, reliability_level
+                    FROM mart.market_corridor
+                    WHERE loading_city_gcid = 990002 AND unloading_city_gcid = 990001
+                """).fetchall())
+
+            refresh_corridor(conn, date(2026, 10, 31))
+            self.assertEqual(levels(), {56: "HIGH", 4: "MEDIUM", 2: "MEDIUM", 15: "LOW_DATA"})
+            refresh_corridor(conn, date(2026, 11, 1))
+            self.assertEqual(levels()[56], "MEDIUM")
