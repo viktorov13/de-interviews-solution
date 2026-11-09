@@ -1,7 +1,8 @@
 -- Also reprocess IDs previously in the window, so corrections to loading_date
--- and source deletions do not leave old Core or quarantine rows behind.
+-- and source deletions do not leave old Core, forecast or quarantine rows behind.
 CREATE TEMP TABLE etl_candidates ON COMMIT DROP AS
-WITH bounds AS (
+-- Inline bounds so PostgreSQL can simplify the predicates and use date indexes.
+WITH bounds AS NOT MATERIALIZED (
     SELECT
         %(start_date)s::date AS start_date,
         %(end_date)s::date AS end_date
