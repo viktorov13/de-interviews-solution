@@ -3,6 +3,18 @@ SELECT pg_advisory_xact_lock(20492161026);
 SET LOCAL TIME ZONE 'UTC';
 SET LOCAL max_parallel_workers_per_gather = 0;
 
+\if :{?n_prices}
+\else
+    \set n_prices 300000
+\endif
+-- Quote input as data before reusing the canonical integer in the supplied generator.
+SELECT :'n_prices'::integer AS n_prices \gset
+SELECT :n_prices > 0 AS valid_seed_size \gset
+\if :valid_seed_size
+\else
+    DO $$ BEGIN RAISE EXCEPTION 'N_PRICES must be a positive integer'; END $$;
+\endif
+
 CREATE SCHEMA IF NOT EXISTS raw;
 SET LOCAL search_path TO raw, public;
 
