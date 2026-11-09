@@ -1,0 +1,52 @@
+x-postgres-client: &postgres-client
+  PGHOST: db
+  PGPORT: "5432"
+  PGUSER: ${POSTGRES_USER:-logistics}
+  PGDATABASE: ${POSTGRES_DB:-deals_bigdata}
+  PGPASSWORD: ${POSTGRES_PASSWORD:-}
+
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-logistics}
+      POSTGRES_DB: ${POSTGRES_DB:-deals_bigdata}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+      POSTGRES_HOST_AUTH_METHOD: ${POSTGRES_HOST_AUTH_METHOD:-trust}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  seed:
+    image: postgres:17
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      <<: *postgres-client
+      N_PRICES: ${N_PRICES:-300000}
+    volumes:
+      - ./sql:/sql:ro
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        exec psql -X --single-transaction -v ON_ERROR_STOP=1 -v n_prices="$$N_PRICES" \
+          -f /sql/bootstrap.psql
+
+  pipeline:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    environment:
+      <<: *postgres-client
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata:

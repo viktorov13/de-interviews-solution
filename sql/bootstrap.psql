@@ -1,0 +1,30 @@
+-- Run with psql --single-transaction --set ON_ERROR_STOP=1.
+SELECT pg_advisory_xact_lock(20492161026);
+SET LOCAL TIME ZONE 'UTC';
+SET LOCAL max_parallel_workers_per_gather = 0;
+
+CREATE SCHEMA IF NOT EXISTS raw;
+SET LOCAL search_path TO raw, public;
+
+CREATE TABLE IF NOT EXISTS raw.snapshot (
+    as_of     date PRIMARY KEY,
+    n_prices  integer NOT NULL CHECK (n_prices > 0)
+);
+SELECT EXISTS (SELECT 1 FROM raw.snapshot WHERE as_of = DATE '2026-10-26') AS seeded \gset
+
+\if :seeded
+    \echo Raw snapshot already initialized; keeping existing data.
+\else
+    \ir source/schema.sql
+    \ir source/synthetic.sql
+    CREATE INDEX raw_prices_loading_date_idx ON raw.prices (loading_date);
+    ANALYZE raw.prices;
+    ANALYZE raw.cities;
+    ANALYZE raw.price_body_types;
+    ANALYZE raw.price_dates;
+    INSERT INTO raw.snapshot VALUES (DATE '2026-10-26', :n_prices);
+\endif
+
+\ir 01_core.sql
+\ir 02_mart.sql
+\ir 03_ml.sql
