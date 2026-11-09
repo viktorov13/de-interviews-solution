@@ -85,7 +85,8 @@ class IntegrationTest(unittest.TestCase):
                 FROM mart.ml_price_predictions
             """, (TEST_START, AS_OF, AS_OF, TEST_START)).fetchone()
             expected_history, = conn.execute("""
-                SELECT COUNT(*) FROM core.market_facts WHERE loading_date BETWEEN %s AND %s
+                SELECT COUNT(*) FROM core.market_facts
+                WHERE price_type IN (3, 9) AND loading_date BETWEEN %s AND %s
                     AND (available_on IS NULL OR available_on <= %s)
             """, (TEST_START, AS_OF, AS_OF)).fetchone()
             expected_future, = conn.execute("""
@@ -109,26 +110,27 @@ class IntegrationTest(unittest.TestCase):
                     body_type, price, price_type
                 )
                 SELECT id, loading::date, created::timestamp, updated::timestamp, currency,
-                    fx_date::date, 1001, 1002, 700, 10, 20, 56, 3000, 3
+                    fx_date::date, 1001, 1002, 700, 10, 20, 56, 3000, price_type
                 FROM (VALUES
-                    (91000001, '2026-10-04', '2026-10-04', '2026-10-04', '643', NULL),
-                    (91000002, '2026-10-04', '2026-10-05', NULL, '643', NULL),
-                    (91000003, '2026-10-04', '2026-10-03', '2026-10-05', '643', NULL),
-                    (91000004, '2026-10-04', '2026-10-03', '2026-10-03', '840', '2026-10-06'),
-                    (91000005, '2026-10-05', '2026-10-05', NULL, '643', NULL),
-                    (91000006, '2026-10-26', '2026-10-26', '2026-10-27', '643', NULL),
-                    (91000007, '2026-10-27', '2026-10-26', NULL, '643', NULL),
-                    (91000008, '2026-10-27', '2026-10-27', NULL, '643', NULL),
-                    (91000009, '2026-10-04', NULL, NULL, '643', NULL)
-                ) AS fixture(id, loading, created, updated, currency, fx_date)
+                    (91000001, '2026-10-04', '2026-10-04', '2026-10-04', '643', NULL, 3),
+                    (91000002, '2026-10-04', '2026-10-05', NULL, '643', NULL, 3),
+                    (91000003, '2026-10-04', '2026-10-03', '2026-10-05', '643', NULL, 3),
+                    (91000004, '2026-10-04', '2026-10-03', '2026-10-03', '840', '2026-10-06', 3),
+                    (91000005, '2026-10-05', '2026-10-05', NULL, '643', NULL, 3),
+                    (91000006, '2026-10-26', '2026-10-26', '2026-10-27', '643', NULL, 3),
+                    (91000007, '2026-10-27', '2026-10-26', NULL, '643', NULL, 3),
+                    (91000008, '2026-10-27', '2026-10-27', NULL, '643', NULL, 3),
+                    (91000009, '2026-10-04', NULL, NULL, '643', NULL, 3),
+                    (91000010, '2026-10-05', '2026-10-05', NULL, '643', NULL, 2)
+                ) AS fixture(id, loading, created, updated, currency, fx_date, price_type)
             """)
             load_core(conn, date(2026, 10, 4), date(2026, 10, 28))
             self.assertEqual(conn.execute("""
-                SELECT COUNT(*) FROM core.prices WHERE price_id BETWEEN 91000001 AND 91000009
-            """).fetchone(), (9,))
+                SELECT COUNT(*) FROM core.prices WHERE price_id BETWEEN 91000001 AND 91000010
+            """).fetchone(), (10,))
 
             rows = read_candidates(conn)
-            fixture = rows.loc[rows["price_id"].between(91000001, 91000009)].set_index("price_id")
+            fixture = rows.loc[rows["price_id"].between(91000001, 91000010)].set_index("price_id")
             self.assertEqual(set(fixture.index), {91000001, 91000005, 91000007, 91000009})
             self.assertTrue(fixture.loc[[91000007], "actual_price_rub"].isna().all())
 

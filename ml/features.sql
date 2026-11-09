@@ -1,7 +1,8 @@
 WITH candidates AS (
     SELECT *
     FROM core.market_facts
-    WHERE loading_date BETWEEN %(train_start)s AND %(as_of)s
+    WHERE price_type IN (3, 9)
+        AND loading_date BETWEEN %(train_start)s AND %(as_of)s
         AND (available_on IS NULL OR available_on <= %(as_of)s)
         AND (loading_date >= %(test_start)s
              OR COALESCE(available_on, loading_date) < %(test_start)s)

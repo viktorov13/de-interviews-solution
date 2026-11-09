@@ -11,7 +11,7 @@ from sklearn.metrics import (
 
 from ml.features import AS_OF, CATEGORICAL, TEST_START, TRAIN_START, build_features, read_candidates
 
-MODEL_NAME = "catboost-v2"
+MODEL_NAME = "catboost-carrier-v3"
 SEED = 20261026
 PREDICTION_COLUMNS = (
     "price_id", "loading_date", "loading_city_gcid", "unloading_city_gcid", "body_group",
@@ -56,13 +56,27 @@ def score_batch(conn: Connection) -> dict:
         "train_rows": len(train),
         "test_rows": test_count,
         "future_rows": len(score) - test_count,
+        **evaluate(actual, predicted),
+    }
+    median_rate = (train["actual_price_rub"] / train["distance"]).median()
+    baseline = median_rate * score.loc[test_mask, "distance"]
+    write_results(conn, score, metrics)
+    return {
+        **metrics,
+        "distance_baseline": {
+            "train_median_rub_per_km": float(median_rate),
+            **evaluate(actual, baseline),
+        },
+    }
+
+
+def evaluate(actual: pd.Series, predicted: pd.Series) -> dict[str, float]:
+    return {
         "r2": float(r2_score(actual, predicted)),
         "mape_pct": 100 * float(mean_absolute_percentage_error(actual, predicted)),
         "rmse_rub": float(root_mean_squared_error(actual, predicted)),
         "mae_rub": float(mean_absolute_error(actual, predicted)),
     }
-    write_results(conn, score, metrics)
-    return metrics
 
 
 def write_results(conn: Connection, score: pd.DataFrame, metrics: dict) -> None:
