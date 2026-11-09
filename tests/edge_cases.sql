@@ -13,7 +13,7 @@ INSERT INTO raw.prices (
 )
 SELECT 90000000 + i, TIMESTAMP '2022-01-02', 101, DATE '2022-01-15', 990001, 990002,
     100, 9.95, 120, 57, 2500, 3
-FROM generate_series(1, 17) AS i;
+FROM generate_series(1, 19) AS i;
 
 UPDATE raw.prices SET price = 20, currency_code = '840', nearest_rate_date = '2022-01-01'
 WHERE id = 90000001;
@@ -35,10 +35,15 @@ UPDATE raw.prices SET loading_date = '2021-01-15', price = 1250 WHERE id = 90000
 UPDATE raw.prices SET loading_date = '2021-12-15', price = 2000 WHERE id = 90000016;
 UPDATE raw.prices SET currency_code = '840', nearest_rate_date = NULL WHERE id = 90000017;
 
+UPDATE raw.prices SET loading_date = '2022-02-10', updated_at = '2026-10-27'
+WHERE id = 90000018;
+UPDATE raw.prices SET loading_date = '2026-11-01' WHERE id = 90000019;
+
 INSERT INTO raw.price_body_types (price_id, body_type_id)
 VALUES (90000001, 57), (90000001, 61), (90000001, 4);
 
 INSERT INTO raw.price_dates (price_id, price_date)
-SELECT id, loading_date FROM raw.prices WHERE id BETWEEN 90000001 AND 90000017;
+SELECT id, loading_date FROM raw.prices WHERE id BETWEEN 90000001 AND 90000019;
 INSERT INTO raw.price_dates (price_id, price_date)
 VALUES (90000001, '2022-01-25'), (90000001, '2022-03-01'), (90000001, '2026-10-27');
+UPDATE raw.price_dates SET price_date = '2022-02-10' WHERE price_id = 90000019;

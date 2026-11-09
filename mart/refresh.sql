@@ -21,6 +21,8 @@ stats AS (
     JOIN core.price_body_groups AS b USING (price_id)
     CROSS JOIN snapshot AS s
     WHERE m.first_price_date <= s.as_of
+        AND p.loading_date <= s.as_of
+        AND COALESCE(p.available_on, p.loading_date) <= s.as_of
     GROUP BY m.price_month, p.loading_city_gcid, p.unloading_city_gcid,
         b.body_group_id, p.weight_category
 )

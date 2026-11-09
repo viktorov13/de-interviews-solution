@@ -7,7 +7,7 @@ import psycopg
 
 from etl.load import load_core
 from mart.refresh import refresh_corridor
-from ml.features import AS_OF, TEST_START, read_candidates
+from ml.features import AS_OF, TEST_START, build_features, read_candidates
 from ml.score import MODEL_NAME
 from pipeline import run
 
@@ -17,8 +17,8 @@ class IntegrationTest(unittest.TestCase):
         with psycopg.connect(autocommit=True) as conn, conn.transaction(force_rollback=True):
             conn.execute(Path(__file__).with_name("edge_cases.sql").read_text(encoding="utf-8"))
             stats = load_core(conn, date(2021, 1, 1), date(2022, 4, 1))
-            self.assertEqual(stats["source_rows"], 17)
-            self.assertEqual(stats["loaded_rows"], 7)
+            self.assertEqual(stats["source_rows"], 18)
+            self.assertEqual(stats["loaded_rows"], 8)
             self.assertEqual(stats["quarantined_rows"], 10)
             self.assertEqual(stats["quarantine_reasons"], {
                 "INVALID_PRICE": 1,
@@ -49,6 +49,7 @@ class IntegrationTest(unittest.TestCase):
                 WHERE price_id = 90000001 ORDER BY body_group_id
             """).fetchall(), [(4,), (56,)])
 
+            load_core(conn, date(2026, 11, 1), date(2026, 11, 2))
             refresh_corridor(conn, AS_OF)
             months = conn.execute("""
                 SELECT price_month, p25_trip, median_trip, p75_trip, avg_trip,
@@ -90,9 +91,8 @@ class IntegrationTest(unittest.TestCase):
                     AND (available_on IS NULL OR available_on <= %s)
             """, (TEST_START, AS_OF, AS_OF)).fetchone()
             expected_future, = conn.execute("""
-                SELECT COUNT(*) FROM core.prices WHERE loading_date > %s AND NOT complex
-                    AND (available_on IS NULL OR available_on <= %s)
-            """, (AS_OF, AS_OF)).fetchone()
+                SELECT COUNT(*) FROM core.forecast_requests WHERE loading_date > %s
+            """, (AS_OF,)).fetchone()
             self.assertEqual((history, future, invalid), (expected_history, expected_future, 0))
             self.assertGreater(history, 0)
             self.assertGreater(future, 0)
@@ -185,3 +185,43 @@ class IntegrationTest(unittest.TestCase):
             self.assertEqual(observer.execute("""
                 SELECT COUNT(*) FROM core.dq_quarantine_prices WHERE price_id = %s
             """, (price_id,)).fetchone(), (0,))
+
+    def test_label_free_forecasts_and_malformed_values(self):
+        with psycopg.connect(autocommit=True) as conn, conn.transaction(force_rollback=True):
+            conn.execute("""
+                INSERT INTO raw.prices (
+                    id, loading_date, created_at, currency_code, nearest_rate_date,
+                    loading_city_gcid, unloading_city_gcid, distance, total_weight, total_volume,
+                    body_type, price, price_type
+                )
+                SELECT id, loading::date, DATE '2026-10-26', currency, fx_date::date,
+                    1001, 1002, distance, 10, 20, 57, price, 3
+                FROM (VALUES
+                    (92000001, '2500-01-01', '643', NULL, 700, 0),
+                    (92000002, '2026-11-01', '840', NULL, 700, 35),
+                    (92000003, '2026-11-01', '643', NULL, 1e200, 3000),
+                    (92000004, '2026-11-01', '840', '2026-10-06', 700, 1e308),
+                    (92000005, 'infinity', '643', NULL, 700, 3000)
+                ) AS fixture(id, loading, currency, fx_date, distance, price)
+            """)
+            conn.execute("""
+                INSERT INTO raw.price_body_types (price_id, body_type_id)
+                VALUES (92000001, 61), (92000001, 4)
+            """)
+            load_core(conn, date(2026, 11, 1), None)
+
+            reasons = conn.execute("""
+                SELECT reason FROM core.dq_quarantine_prices
+                WHERE price_id BETWEEN 92000001 AND 92000005 ORDER BY price_id
+            """).fetchall()
+            self.assertEqual(reasons, [
+                ("INVALID_PRICE",), ("MISSING_FX_RATE",), ("INVALID_DISTANCE",),
+                ("INVALID_NORMALIZED_PRICE",), ("INVALID_LOADING_DATE",),
+            ])
+            candidates = read_candidates(conn)
+            rows = candidates.loc[candidates["price_id"].between(92000001, 92000005)]
+            self.assertEqual(set(rows["price_id"]), {92000001, 92000002, 92000004})
+            self.assertTrue(rows["actual_price_rub"].isna().all())
+            distant = build_features(rows.loc[rows["price_id"] == 92000001]).iloc[0]
+            self.assertEqual(distant["year"], 2500)
+            self.assertEqual(distant["body_group"], "Тент")

@@ -27,7 +27,7 @@ def load_core(
     counts = dict(conn.execute("""
         SELECT reason, COUNT(*) FROM etl_prices GROUP BY reason
     """).fetchall())
-    conn.execute("DROP TABLE etl_prices, etl_candidates")
+    conn.execute("DROP TABLE etl_body_groups, etl_forecast, etl_prices, etl_candidates")
     loaded = counts.pop(None, 0)
     rejected = sum(counts.values())
     return {

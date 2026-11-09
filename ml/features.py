@@ -39,7 +39,10 @@ def build_features(rows: pd.DataFrame) -> pd.DataFrame:
     for column in NUMERICAL:
         features[column] = pd.to_numeric(features[column])
 
-    loading_date = pd.to_datetime(rows["loading_date"]).dt
+    # Seconds preserve civil dates outside pandas' nanosecond range.
+    loading_date = pd.Series(
+        rows["loading_date"].to_numpy(dtype="datetime64[s]"), index=rows.index
+    ).dt
     features["year"] = loading_date.year
     for name, offset, period in zip(
         CALENDAR_FEATURES, (loading_date.month - 1, loading_date.dayofweek, loading_date.dayofyear - 1),

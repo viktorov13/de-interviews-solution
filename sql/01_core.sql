@@ -76,6 +76,22 @@ CREATE TABLE IF NOT EXISTS core.dq_quarantine_prices (
 CREATE INDEX IF NOT EXISTS quarantine_loading_date_idx
     ON core.dq_quarantine_prices (loading_date);
 
+-- Future inputs contain route features only, including requests with no usable source price.
+CREATE TABLE IF NOT EXISTS core.forecast_requests (
+    price_id               bigint PRIMARY KEY,
+    loading_date           date NOT NULL,
+    loading_city_gcid      integer NOT NULL,
+    unloading_city_gcid    integer NOT NULL,
+    distance               double precision NOT NULL CHECK (distance > 0),
+    total_weight           double precision NOT NULL CHECK (total_weight >= 0),
+    total_volume           double precision NOT NULL CHECK (total_volume >= 0),
+    weight_category        varchar(4) NOT NULL,
+    volume_category        varchar(4) NOT NULL,
+    body_group_id          smallint NOT NULL
+);
+CREATE INDEX IF NOT EXISTS forecast_requests_loading_date_idx
+    ON core.forecast_requests (loading_date);
+
 CREATE TABLE IF NOT EXISTS core.price_body_groups (
     price_id       bigint NOT NULL REFERENCES core.prices ON DELETE CASCADE,
     body_group_id  smallint NOT NULL,

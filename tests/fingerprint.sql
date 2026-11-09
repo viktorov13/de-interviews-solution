@@ -3,6 +3,10 @@ SELECT 'core.city_snapshot', COUNT(*),
     MD5(STRING_AGG(MD5(TO_JSONB(c)::text), '' ORDER BY gc_id))
 FROM core.city_snapshot AS c
 UNION ALL
+SELECT 'core.forecast_requests', COUNT(*),
+    MD5(STRING_AGG(MD5(TO_JSONB(f)::text), '' ORDER BY price_id))
+FROM core.forecast_requests AS f
+UNION ALL
 SELECT 'core.prices', COUNT(*),
     MD5(STRING_AGG(MD5(TO_JSONB(p)::text), '' ORDER BY price_id))
 FROM core.prices AS p
