@@ -63,6 +63,13 @@ class IntegrationTest(unittest.TestCase):
             self.assertEqual(months[2][13], "LOW_DATA")
             self.assertEqual(months[3][10:13], (None, None, None))
 
+            conn.execute("DELETE FROM raw.cities WHERE gc_id = 990001")
+            self.assertEqual(conn.execute("""
+                SELECT COUNT(*) FROM mart.route_card
+                WHERE loading_city_gcid = 990001 AND unloading_city_gcid = 990002
+                    AND body_group_id = 56 AND weight_category = 'FTL'
+            """).fetchone(), (4,))
+
     def test_snapshot_scoring(self):
         with psycopg.connect() as conn:
             history, future, invalid = conn.execute("""

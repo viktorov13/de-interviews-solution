@@ -37,7 +37,7 @@ SELECT
     END AS reason
 FROM etl_candidates AS candidate
 JOIN raw.prices AS p ON p.id = candidate.price_id
-LEFT JOIN core.cities AS origin ON origin.gc_id = p.loading_city_gcid
-LEFT JOIN core.cities AS destination ON destination.gc_id = p.unloading_city_gcid
+LEFT JOIN core.source_cities AS origin ON origin.gc_id = p.loading_city_gcid
+LEFT JOIN core.source_cities AS destination ON destination.gc_id = p.unloading_city_gcid
 LEFT JOIN raw.body_types AS b ON b.id = p.body_type
 LEFT JOIN rates AS r ON r.num_code = p.currency_code AND r.setting_date = p.nearest_rate_date;

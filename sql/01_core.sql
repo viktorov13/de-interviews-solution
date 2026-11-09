@@ -1,6 +1,6 @@
 CREATE SCHEMA IF NOT EXISTS core;
 
-CREATE OR REPLACE VIEW core.cities AS
+CREATE OR REPLACE VIEW core.source_cities AS
 SELECT DISTINCT ON (gc_id)
     gc_id,
     id AS source_city_id,
@@ -13,6 +13,16 @@ SELECT DISTINCT ON (gc_id)
     longitude
 FROM raw.cities
 ORDER BY gc_id, id;
+
+-- Initialize the snapshot once, including when upgrading an existing volume.
+CREATE TABLE IF NOT EXISTS core.city_snapshot AS
+SELECT * FROM core.source_cities;
+CREATE UNIQUE INDEX IF NOT EXISTS core_city_snapshot_gc_id_idx
+    ON core.city_snapshot (gc_id);
+
+CREATE OR REPLACE VIEW core.cities AS
+SELECT gc_id, source_city_id, name, full_name_local, region, latitude, longitude
+FROM core.city_snapshot;
 
 CREATE OR REPLACE FUNCTION core.body_group_id(body_type_id integer)
 RETURNS smallint

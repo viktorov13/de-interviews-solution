@@ -52,3 +52,24 @@ FROM etl_prices AS p
 JOIN raw.price_dates AS d USING (price_id)
 WHERE p.reason IS NULL
 GROUP BY p.price_id, DATE_TRUNC('month', d.price_date)::date;
+
+INSERT INTO core.city_snapshot (
+    gc_id, source_city_id, name, full_name_local, region, latitude, longitude
+)
+SELECT gc_id, source_city_id, name, full_name_local, region, latitude, longitude
+FROM core.source_cities
+ON CONFLICT (gc_id) DO UPDATE SET
+    source_city_id = EXCLUDED.source_city_id,
+    name = EXCLUDED.name,
+    full_name_local = EXCLUDED.full_name_local,
+    region = EXCLUDED.region,
+    latitude = EXCLUDED.latitude,
+    longitude = EXCLUDED.longitude;
+
+-- Keep the last known city for facts outside the refreshed date window.
+DELETE FROM core.city_snapshot AS city
+WHERE NOT EXISTS (SELECT 1 FROM core.source_cities WHERE gc_id = city.gc_id)
+    AND NOT EXISTS (
+        SELECT 1 FROM core.prices AS p
+        WHERE city.gc_id IN (p.loading_city_gcid, p.unloading_city_gcid)
+    );
