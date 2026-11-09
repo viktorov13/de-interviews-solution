@@ -40,6 +40,9 @@ class IntegrationTest(unittest.TestCase):
                 SELECT source_city_id, region FROM core.cities WHERE gc_id = 990001
             """).fetchone(), (900001, "Республика Татарстан"))
             self.assertEqual(conn.execute("""
+                SELECT latitude, longitude FROM core.cities WHERE gc_id = 990002
+            """).fetchone(), (None, None))
+            self.assertEqual(conn.execute("""
                 SELECT body_group_id FROM core.price_body_groups
                 WHERE price_id = 90000001 ORDER BY body_group_id
             """).fetchall(), [(4,), (56,)])

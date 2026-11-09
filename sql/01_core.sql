@@ -9,8 +9,8 @@ SELECT DISTINCT ON (gc_id)
     CASE WHEN POSITION(',' IN full_name_local) > 0 THEN
         NULLIF(BTRIM(SUBSTRING(full_name_local FROM POSITION(',' IN full_name_local) + 1)), '')
     END AS region,
-    latitude,
-    longitude
+    CASE WHEN latitude BETWEEN -90 AND 90 THEN latitude END AS latitude,
+    CASE WHEN longitude BETWEEN -180 AND 180 THEN longitude END AS longitude
 FROM raw.cities
 ORDER BY gc_id, id;
 
