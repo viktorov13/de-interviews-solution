@@ -2,10 +2,14 @@ WITH candidates AS (
     SELECT *
     FROM core.market_facts
     WHERE loading_date BETWEEN %(train_start)s AND %(as_of)s
+        AND (available_on IS NULL OR available_on <= %(as_of)s)
+        AND (loading_date >= %(test_start)s
+             OR COALESCE(available_on, loading_date) < %(test_start)s)
     UNION ALL
     SELECT *
     FROM core.prices
     WHERE loading_date > %(as_of)s AND NOT complex
+        AND (available_on IS NULL OR available_on <= %(as_of)s)
 )
 SELECT
     p.price_id, p.loading_date, p.loading_city_gcid, p.unloading_city_gcid,

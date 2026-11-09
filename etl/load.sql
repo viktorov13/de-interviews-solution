@@ -12,7 +12,7 @@ WHERE reason IS NOT NULL;
 INSERT INTO core.prices (
     price_id, loading_date, loading_city_gcid, unloading_city_gcid, organization_id,
     price_type, is_fact, complex, outlier_mark, distance, total_weight, total_volume,
-    weight_category, volume_category, primary_body_group_id, price_rub
+    weight_category, volume_category, primary_body_group_id, price_rub, available_on
 )
 SELECT
     p.price_id, p.loading_date, p.loading_city_gcid, p.unloading_city_gcid, p.organization_id,
@@ -30,7 +30,8 @@ SELECT
         ELSE 'OTH'
     END),
     p.primary_body_group_id,
-    p.price::numeric * p.rate::numeric
+    p.price::numeric * p.rate::numeric,
+    p.available_on
 FROM etl_prices AS p
 CROSS JOIN LATERAL (SELECT ROUND(p.total_weight::numeric, 1) AS rounded) AS weight
 WHERE p.reason IS NULL;

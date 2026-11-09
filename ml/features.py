@@ -24,7 +24,8 @@ CALENDAR_FEATURES = ("month", "weekday", "day_of_year")
 def read_candidates(conn: Connection) -> pd.DataFrame:
     with conn.cursor(row_factory=dict_row) as cursor:
         cursor.execute(
-            SQL.read_text(encoding="utf-8"), {"train_start": TRAIN_START, "as_of": AS_OF}
+            SQL.read_text(encoding="utf-8"),
+            {"train_start": TRAIN_START, "test_start": TEST_START, "as_of": AS_OF},
         )
         return pd.DataFrame.from_records(
             cursor.fetchall(), columns=[column.name for column in cursor.description]

@@ -11,7 +11,7 @@ from sklearn.metrics import (
 
 from ml.features import AS_OF, CATEGORICAL, TEST_START, TRAIN_START, build_features, read_candidates
 
-MODEL_NAME = "catboost-v1"
+MODEL_NAME = "catboost-v2"
 SEED = 20261026
 PREDICTION_COLUMNS = (
     "price_id", "loading_date", "loading_city_gcid", "unloading_city_gcid", "body_group",

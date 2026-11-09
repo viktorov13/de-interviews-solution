@@ -6,7 +6,8 @@ import psycopg
 
 from etl.load import load_core
 from mart.refresh import refresh_corridor
-from ml.features import AS_OF, TEST_START
+from ml.features import AS_OF, TEST_START, read_candidates
+from ml.score import MODEL_NAME
 
 
 class IntegrationTest(unittest.TestCase):
@@ -80,13 +81,48 @@ class IntegrationTest(unittest.TestCase):
             """, (TEST_START, AS_OF, AS_OF, TEST_START)).fetchone()
             expected_history, = conn.execute("""
                 SELECT COUNT(*) FROM core.market_facts WHERE loading_date BETWEEN %s AND %s
-            """, (TEST_START, AS_OF)).fetchone()
+                    AND (available_on IS NULL OR available_on <= %s)
+            """, (TEST_START, AS_OF, AS_OF)).fetchone()
             expected_future, = conn.execute("""
                 SELECT COUNT(*) FROM core.prices WHERE loading_date > %s AND NOT complex
-            """, (AS_OF,)).fetchone()
+                    AND (available_on IS NULL OR available_on <= %s)
+            """, (AS_OF, AS_OF)).fetchone()
             self.assertEqual((history, future, invalid), (expected_history, expected_future, 0))
             self.assertGreater(history, 0)
             self.assertGreater(future, 0)
             self.assertEqual(conn.execute("""
-                SELECT test_rows, future_rows FROM mart.ml_evaluation WHERE as_of = %s
-            """, (AS_OF,)).fetchone(), (history, future))
+                SELECT test_rows, future_rows FROM mart.ml_evaluation
+                WHERE as_of = %s AND model_name = %s
+            """, (AS_OF, MODEL_NAME)).fetchone(), (history, future))
+
+    def test_ml_availability_at_temporal_boundaries(self):
+        with psycopg.connect(autocommit=True) as conn, conn.transaction(force_rollback=True):
+            conn.execute("""
+                INSERT INTO raw.prices (
+                    id, loading_date, created_at, updated_at, currency_code, nearest_rate_date,
+                    loading_city_gcid, unloading_city_gcid, distance, total_weight, total_volume,
+                    body_type, price, price_type
+                )
+                SELECT id, loading::date, created::timestamp, updated::timestamp, currency,
+                    fx_date::date, 1001, 1002, 700, 10, 20, 56, 3000, 3
+                FROM (VALUES
+                    (91000001, '2026-10-04', '2026-10-04', '2026-10-04', '643', NULL),
+                    (91000002, '2026-10-04', '2026-10-05', NULL, '643', NULL),
+                    (91000003, '2026-10-04', '2026-10-03', '2026-10-05', '643', NULL),
+                    (91000004, '2026-10-04', '2026-10-03', '2026-10-03', '840', '2026-10-06'),
+                    (91000005, '2026-10-05', '2026-10-05', NULL, '643', NULL),
+                    (91000006, '2026-10-26', '2026-10-26', '2026-10-27', '643', NULL),
+                    (91000007, '2026-10-27', '2026-10-26', NULL, '643', NULL),
+                    (91000008, '2026-10-27', '2026-10-27', NULL, '643', NULL),
+                    (91000009, '2026-10-04', NULL, NULL, '643', NULL)
+                ) AS fixture(id, loading, created, updated, currency, fx_date)
+            """)
+            load_core(conn, date(2026, 10, 4), date(2026, 10, 28))
+            self.assertEqual(conn.execute("""
+                SELECT COUNT(*) FROM core.prices WHERE price_id BETWEEN 91000001 AND 91000009
+            """).fetchone(), (9,))
+
+            rows = read_candidates(conn)
+            fixture = rows.loc[rows["price_id"].between(91000001, 91000009)].set_index("price_id")
+            self.assertEqual(set(fixture.index), {91000001, 91000005, 91000007, 91000009})
+            self.assertTrue(fixture.loc[[91000007], "actual_price_rub"].isna().all())

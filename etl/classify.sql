@@ -22,6 +22,7 @@ SELECT
     p.volume_category,
     p.body_type,
     core.body_group_id(COALESCE(b.std_id, p.body_type)) AS primary_body_group_id,
+    GREATEST(p.created_at::date, p.updated_at::date, r.setting_date) AS available_on,
     p.price,
     CASE WHEN p.currency_code = '643' THEN 1::double precision ELSE r.value END AS rate,
     CASE

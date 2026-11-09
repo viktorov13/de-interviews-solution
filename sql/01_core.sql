@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS core.prices (
     primary_body_group_id  smallint NOT NULL,
     price_rub              numeric NOT NULL CHECK (price_rub > 0)
 );
+ALTER TABLE core.prices ADD COLUMN IF NOT EXISTS available_on date;
 CREATE INDEX IF NOT EXISTS core_prices_loading_date_idx ON core.prices (loading_date);
 
 CREATE TABLE IF NOT EXISTS core.dq_quarantine_prices (
