@@ -1,6 +1,7 @@
 import unittest
 from datetime import date
 from pathlib import Path
+from unittest.mock import patch
 
 import psycopg
 
@@ -8,6 +9,7 @@ from etl.load import load_core
 from mart.refresh import refresh_corridor
 from ml.features import AS_OF, TEST_START, read_candidates
 from ml.score import MODEL_NAME
+from pipeline import run
 
 
 class IntegrationTest(unittest.TestCase):
@@ -129,3 +131,55 @@ class IntegrationTest(unittest.TestCase):
             fixture = rows.loc[rows["price_id"].between(91000001, 91000009)].set_index("price_id")
             self.assertEqual(set(fixture.index), {91000001, 91000005, 91000007, 91000009})
             self.assertTrue(fixture.loc[[91000007], "actual_price_rub"].isna().all())
+
+    def test_backfill_handles_moves_deletions_and_repaired_prices(self):
+        with psycopg.connect(autocommit=True) as conn, conn.transaction(force_rollback=True):
+            conn.execute(Path(__file__).with_name("edge_cases.sql").read_text(encoding="utf-8"))
+            start, end = date(2022, 1, 1), date(2022, 2, 1)
+            load_core(conn, start, end)
+
+            conn.execute("""
+                UPDATE raw.prices SET loading_date = DATE '2022-04-01' WHERE id = 90000001;
+                DELETE FROM raw.prices WHERE id = 90000002;
+                UPDATE raw.prices SET price = 2300 WHERE id = 90000005;
+            """)
+            stats = load_core(conn, start, end)
+            self.assertEqual(stats["deleted_source_rows"], 1)
+            self.assertEqual(conn.execute("""
+                SELECT price_id, loading_date, price_rub FROM core.prices
+                WHERE price_id IN (90000001, 90000002, 90000005) ORDER BY price_id
+            """).fetchall(), [(90000001, date(2022, 4, 1), 1500), (90000005, date(2022, 1, 15), 2300)])
+            self.assertEqual(conn.execute("""
+                SELECT COUNT(*) FROM core.dq_quarantine_prices WHERE price_id = 90000005
+            """).fetchone(), (0,))
+
+    def test_scoring_failure_rolls_back_core_and_quarantine(self):
+        with psycopg.connect(autocommit=True) as observer:
+            price_id, price_rub = observer.execute("""
+                SELECT price_id, price_rub FROM core.market_facts
+                WHERE loading_date = %s ORDER BY price_id LIMIT 1
+            """, (TEST_START,)).fetchone()
+
+            def change_source_then_load(conn, start, end):
+                conn.execute("UPDATE raw.prices SET price = 0 WHERE id = %s", (price_id,))
+                return load_core(conn, start, end)
+
+            def fail_scoring(conn):
+                self.assertEqual(conn.execute("""
+                    SELECT reason FROM core.dq_quarantine_prices WHERE price_id = %s
+                """, (price_id,)).fetchone(), ("INVALID_PRICE",))
+                raise RuntimeError("injected scoring failure")
+
+            with (
+                patch("pipeline.load_core", side_effect=change_source_then_load),
+                patch("pipeline.score_batch", side_effect=fail_scoring),
+                self.assertRaisesRegex(RuntimeError, "injected scoring failure"),
+            ):
+                run(TEST_START, date(2026, 10, 6))
+
+            self.assertEqual(observer.execute("""
+                SELECT price_rub FROM core.prices WHERE price_id = %s
+            """, (price_id,)).fetchone(), (price_rub,))
+            self.assertEqual(observer.execute("""
+                SELECT COUNT(*) FROM core.dq_quarantine_prices WHERE price_id = %s
+            """, (price_id,)).fetchone(), (0,))
